@@ -1,0 +1,51 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Environment Variables (CRITICAL) ---
+.env
+.env.local
+.env.*.local
+!*.example
+
+# --- Virtual Environment ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- IDEs ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Testing & Coverage ---
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# --- MyPy ---
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# --- Ruff ---
+.ruff_cache/
+
+# --- Distribution ---
+dist/
+build/
+*.egg-info/
+
+# --- LangChair/LangGraph ---
+# Local database files if using SQLite (we are using Supabase, but safe to ignore)
+*.db
+*.sqlite3
+
+# --- Logs ---
+*.log
+uv.lock
