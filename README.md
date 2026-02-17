@@ -4,3 +4,7 @@ Possible integrations
 - Gmail
 - Google Calender
 - Github
+- telegram/whatsapp for chatinterface
+- notion for notes/ideas store
+
+
