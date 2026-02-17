@@ -7,4 +7,8 @@ Possible integrations
 - telegram/whatsapp for chatinterface
 - notion for notes/ideas store
 
+Objective :
+- send mail and meeting invites via Gmail
+- plan events , block calender and send reminders via Google Calender
+- ideas/resource collection on notion workspace and fetch the required resource when required
 
