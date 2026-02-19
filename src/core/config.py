@@ -37,17 +37,16 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3"
 
-    # --- Notion ---
-    notion_api_key: Optional[SecretStr] = Field(
-        default=None,
-        description="Internal integration token with access to the workspace",
+    # --- Supabase ---
+    supabase_url: str = Field(
+        ..., description="Supabase project URL (https://<project>.supabase.co)"
     )
-    notion_resource_database_id: Optional[str] = Field(
-        default=None, description="Notion database ID where resources are stored"
+    supabase_key: SecretStr = Field(
+        ..., description="Supabase service role or anon key with table access"
     )
-    notion_default_parent_page_id: Optional[str] = Field(
-        default=None,
-        description="Optional parent page ID to scope new databases or pages",
+    supabase_resources_table: str = Field(
+        default="resources",
+        description="Table used to store resource rows",
     )
 
     def validate_llm_config(self):
@@ -55,14 +54,12 @@ class Settings(BaseSettings):
         if self.llm_provider == "openai" and not self.openai_api_key:
             raise ValueError("LLM Provider is OpenAI, but OPENAI_API_KEY is missing!")
 
-    def validate_notion_config(self):
-        """Ensure Notion credentials look present."""
-        if not self.notion_api_key:
-            raise ValueError("NOTION_API_KEY is required for resource management.")
-        if not self.notion_resource_database_id:
-            raise ValueError(
-                "NOTION_RESOURCE_DATABASE_ID is required for resource management."
-            )
+    def validate_supabase_config(self):
+        """Ensure Supabase credentials are present."""
+        if not self.supabase_url:
+            raise ValueError("SUPABASE_URL is required for resource management.")
+        if not self.supabase_key:
+            raise ValueError("SUPABASE_KEY is required for resource management.")
 
 
 # Create a global settings object
@@ -71,6 +68,6 @@ settings = Settings()
 # Validate immediately upon import
 try:
     settings.validate_llm_config()
-    settings.validate_notion_config()
+    settings.validate_supabase_config()
 except ValueError as e:
     print(f"Configuration Error: {e}")

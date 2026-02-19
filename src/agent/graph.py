@@ -10,8 +10,8 @@ from langgraph.graph import END, START, StateGraph
 
 from src.agent.state import AgentState
 from src.core.llm import get_llm
-from src.tools.notion_client import NotionResourceClient, ResourceInput
-from src.utils.notion_format import ResourceRecord
+from src.tools.supabase_client import SupabaseResourceClient
+from src.utils.resource_models import ResourceInput, ResourceRecord
 
 
 CLASSIFICATION_PROMPT = ChatPromptTemplate.from_messages(
@@ -56,7 +56,7 @@ def classify_input(state: AgentState) -> Dict[str, Any]:
         CLASSIFICATION_PROMPT.format_messages(user_input=user_message.content)
     )
 
-    parsed = _safe_json_parse(response.content)
+    parsed = _safe_json_parse(str(response.content))
     intent = _normalise_intent(parsed.get("intent"))
 
     return {
@@ -74,12 +74,13 @@ def store_resource(state: AgentState) -> Dict[str, Any]:
     title = (resource_data.get("title") or "").strip()
     url = (resource_data.get("url") or "").strip() or None
     notes = (resource_data.get("notes") or "").strip() or None
+    user_message_text = str(state["messages"][-1].content)
 
     if not title:
-        title = _derive_title(url=url, fallback_text=state["messages"][-1].content)
+        title = _derive_title(url=url, fallback_text=user_message_text)
 
     if not notes and not url:
-        notes = state["messages"][-1].content
+        notes = user_message_text
 
     payload = ResourceInput(
         title=title,
@@ -90,14 +91,14 @@ def store_resource(state: AgentState) -> Dict[str, Any]:
     )
 
     try:
-        notion = NotionResourceClient()
-        record = notion.add_resource(payload)
+        supabase = SupabaseResourceClient()
+        record = supabase.add_resource(payload)
     except Exception as exc:
         return {
             "messages": [
                 AIMessage(
                     content=(
-                        "I couldn't save that resource because the Notion API returned "
+                        "I couldn't save that resource because the Supabase API returned "
                         f"an error: {exc}"
                     )
                 )
@@ -120,8 +121,8 @@ def fetch_resources(state: AgentState) -> Dict[str, Any]:
     limit = _coerce_limit(parsed.get("limit"))
 
     try:
-        notion = NotionResourceClient()
-        records = notion.fetch_resources(
+        supabase = SupabaseResourceClient()
+        records = supabase.fetch_resources(
             tags=tags or None,
             categories=categories or None,
             query=query,
@@ -132,7 +133,7 @@ def fetch_resources(state: AgentState) -> Dict[str, Any]:
             "messages": [
                 AIMessage(
                     content=(
-                        "I couldn't look up your resources because the Notion API returned "
+                        "I couldn't look up your resources because the Supabase API returned "
                         f"an error: {exc}"
                     )
                 )
@@ -286,7 +287,7 @@ def _format_retrieval_response(
 
 def _record_to_dict(record: ResourceRecord) -> Dict[str, Any]:
     data = asdict(record)
-    data["created_time"] = record.created_time.isoformat()
+    data["created_at"] = record.created_at.isoformat()
     return data
 
 
