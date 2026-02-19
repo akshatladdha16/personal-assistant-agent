@@ -1,5 +1,5 @@
 def main():
-    print("Hello from personal-assistant-agent!")
+    print("Run `uv run python -m src.main` to start the resource librarian CLI.")
 
 
 if __name__ == "__main__":
