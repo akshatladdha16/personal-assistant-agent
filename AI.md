@@ -31,8 +31,8 @@ Project-based learning notes for building a Supabase-backed resource librarian a
 
 ### Implementation Notes
 - `src/utils/resource_models.py` holds `ResourceInput`/`ResourceRecord` dataclasses and utility functions for normalising lists and parsing timestamps.
-- `src/tools/supabase_client.py` wraps inserts and filtered selects, keeping the LangGraph nodes free of PostgREST details.
-- Tags and categories are stored as simple `text` columns—MVP constraint is “one tag/category per resource”—so filters rely on `ilike` matching rather than array containment.
+- `src/tools/supabase_client.py` lets the agent upsert resources: if a title/URL already exists we patch only the supplied fields; otherwise we insert a new row.
+- Tags and categories are stored as simple `text` columns—MVP constraint is “one tag/category per resource”—so filters rely on keyword `ilike` matching.
 
 **Lesson:** Converting DB rows into rich Python objects keeps graph nodes simple and easier to reason about.
 
