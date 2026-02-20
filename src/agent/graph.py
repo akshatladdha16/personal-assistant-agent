@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict
 from typing import Any, Dict, Iterable, List
 
@@ -35,6 +36,9 @@ If the user wants to retrieve or search resources, set intent to
 - tags: list of tags mentioned
 - categories: list of categories mentioned
 - limit: number of items requested (default 5)
+
+If the user asks for recommendations, suggestions, lists, or wants to know
+"which" resources exist, treat this as "fetch_resource".
 
 If you cannot determine intent, set intent to "chat".
 """,
@@ -120,12 +124,15 @@ def fetch_resources(state: AgentState) -> Dict[str, Any]:
     query = (parsed.get("query") or "").strip() or None
     limit = _coerce_limit(parsed.get("limit"))
 
+    keywords = _extract_keywords(query)
+
     try:
         supabase = SupabaseResourceClient()
         records = supabase.fetch_resources(
             tags=tags or None,
             categories=categories or None,
             query=query,
+            keywords=keywords or None,
             limit=limit,
         )
     except Exception as exc:
@@ -145,6 +152,7 @@ def fetch_resources(state: AgentState) -> Dict[str, Any]:
         tags=tags,
         categories=categories,
         query=query,
+        keywords=keywords,
     )
 
     return {
@@ -154,11 +162,18 @@ def fetch_resources(state: AgentState) -> Dict[str, Any]:
 
 
 def fallback_chat(state: AgentState) -> Dict[str, Any]:
-    """Default to a plain chat response when no structured action is needed."""
+    """Fallback response that keeps the agent grounded to stored resources."""
 
-    llm = get_llm()
-    response = llm.invoke(state["messages"])
-    return {"messages": [response]}
+    return {
+        "messages": [
+            AIMessage(
+                content=(
+                    "I'm focused on the resources you've saved. Try adding a new "
+                    "resource or ask me to fetch items by title, tag, or keyword."
+                )
+            )
+        ]
+    }
 
 
 def route_intent(state: AgentState) -> str:
@@ -214,7 +229,18 @@ def _normalise_intent(intent: Any) -> str:
     intent_lower = intent.lower().strip()
     if intent_lower in {"store", "save", "store_resource", "add"}:
         return "store_resource"
-    if intent_lower in {"fetch", "retrieve", "search", "fetch_resource"}:
+    if intent_lower in {
+        "fetch",
+        "retrieve",
+        "search",
+        "fetch_resource",
+        "list",
+        "show",
+        "recommend",
+        "suggest",
+        "find",
+        "tell",
+    }:
         return "fetch_resource"
     return "chat"
 
@@ -241,7 +267,7 @@ def _derive_title(*, url: str | None, fallback_text: str) -> str:
 
 
 def _format_store_confirmation(record: ResourceRecord) -> str:
-    parts = [f"Saved '{record.title}' to Notion."]
+    parts = [f"Saved '{record.title}' to your Supabase library."]
     if record.url:
         parts.append(f"Link: {record.url}")
     if record.tags:
@@ -257,6 +283,7 @@ def _format_retrieval_response(
     tags: List[str],
     categories: List[str],
     query: str | None,
+    keywords: List[str],
 ) -> str:
     if not records:
         target = []
@@ -266,6 +293,8 @@ def _format_retrieval_response(
             target.append("tags " + ", ".join(tags))
         if categories:
             target.append("categories " + ", ".join(categories))
+        if keywords:
+            target.append("keywords " + ", ".join(keywords))
         descriptor = ", ".join(target) if target else "that request"
         return f"I couldn't find any saved resources for {descriptor}."
 
@@ -297,6 +326,55 @@ def _coerce_limit(value: Any) -> int:
     if isinstance(value, str) and value.strip().isdigit():
         return min(int(value.strip()), 25)
     return 5
+
+
+STOPWORDS = {
+    "the",
+    "and",
+    "for",
+    "with",
+    "about",
+    "into",
+    "from",
+    "that",
+    "this",
+    "these",
+    "those",
+    "anything",
+    "something",
+    "related",
+    "please",
+    "resource",
+    "resources",
+    "find",
+    "fetch",
+    "show",
+    "give",
+    "named",
+    "called",
+    "give",
+    "me",
+    "you",
+    "can",
+    "could",
+}
+
+
+def _extract_keywords(text: str | None) -> List[str]:
+    if not text:
+        return []
+
+    tokens = re.findall(r"[\w']+", text.lower())
+    keywords: List[str] = []
+    for token in tokens:
+        if len(token) <= 2:
+            continue
+        if token in STOPWORDS:
+            continue
+        if token not in keywords:
+            keywords.append(token)
+
+    return keywords
 
 
 # Singleton instance of the graph
