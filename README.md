@@ -4,6 +4,7 @@ An AI agent that captures every resource you share—links, notes, or mixed cont
 
 ## What It Does
 - Save new resources into a Supabase table with consistent columns (title, URL, notes, tags, categories).
+- Update existing resources by re-saving them with new metadata (e.g., add a category later).
 - Retrieve curated resource lists filtered by keywords or tags.
 - Provide a simple CLI loop for experimenting with agent behaviour.
 
