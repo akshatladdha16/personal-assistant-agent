@@ -2,18 +2,85 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Any, Iterable, List, Optional, cast
 
 from supabase import Client, create_client
 
 from src.core.config import settings
+from src.core.embeddings import embed_text
 from src.utils.resource_models import (
     ResourceInput,
     ResourceRecord,
     normalise_string_list,
     row_to_record,
 )
+
+
+logger = logging.getLogger(__name__)
+
+
+def _compose_embedding_text(
+    *, title: str, notes: Optional[str], url: Optional[str]
+) -> Optional[str]:
+    parts = [title.strip()]
+    if notes:
+        parts.append(notes.strip())
+    if url:
+        parts.append(url.strip())
+
+    combined = "\n".join(segment for segment in parts if segment)
+    return combined or None
+
+
+def _generate_embedding(text: str) -> Optional[List[float]]:
+    vector = embed_text(text)
+    if vector is None:
+        return None
+
+    expected = settings.embedding_dimensions
+    if expected and len(vector) != expected:
+        logger.warning(
+            "Embedding length %s differs from expected %s; skipping store",
+            len(vector),
+            expected,
+        )
+        return None
+
+    return vector
+
+
+def _expand_keywords(keywords: Iterable[str], query: Optional[str]) -> List[str]:
+    seen: set[str] = set()
+    ordered: List[str] = []
+
+    def add(term: Optional[str]) -> None:
+        if not term:
+            return
+        value = term.strip().lower()
+        if not value:
+            return
+        if value in seen:
+            return
+        seen.add(value)
+        ordered.append(value)
+
+    for raw in keywords:
+        add(raw)
+        lowered = raw.strip().lower()
+        if len(lowered) > 3:
+            if lowered.endswith("ies"):
+                add(lowered[:-3] + "y")
+            if lowered.endswith("es"):
+                add(lowered[:-2])
+            if lowered.endswith("s"):
+                add(lowered[:-1])
+        if "-" in lowered:
+            add(lowered.replace("-", " "))
+
+    add(query)
+    return ordered
 
 
 class SupabaseResourceClient:
@@ -71,6 +138,25 @@ class SupabaseResourceClient:
 
         existing_row = self._find_existing_row(payload)
 
+        embedding_vector: Optional[List[float]] = None
+        embedding_text = _compose_embedding_text(
+            title=payload.title,
+            notes=payload.notes,
+            url=payload.url,
+        )
+
+        if existing_row:
+            current_text = _compose_embedding_text(
+                title=str(existing_row.get("title", "")),
+                notes=existing_row.get("notes"),
+                url=existing_row.get("url"),
+            )
+            if current_text == embedding_text:
+                embedding_text = None
+
+        if embedding_text:
+            embedding_vector = _generate_embedding(embedding_text)
+
         update_fields: dict[str, Any] = {}
         if payload.url:
             update_fields["url"] = payload.url
@@ -80,6 +166,8 @@ class SupabaseResourceClient:
             update_fields["tags"] = normalised_tags[0]
         if normalised_categories:
             update_fields["categories"] = normalised_categories[0]
+        if embedding_vector is not None:
+            update_fields["embeddings_vector"] = embedding_vector
 
         if existing_row:
             if not update_fields:
@@ -102,6 +190,8 @@ class SupabaseResourceClient:
             "tags": normalised_tags[0] if normalised_tags else None,
             "categories": normalised_categories[0] if normalised_categories else None,
         }
+        if embedding_vector is not None:
+            record_dict["embeddings_vector"] = embedding_vector
 
         insert_response = self._client.table(self._table).insert(record_dict).execute()
 
@@ -145,30 +235,108 @@ class SupabaseResourceClient:
         keywords: Optional[Iterable[str]] = None,
         limit: int = 10,
     ) -> List[ResourceRecord]:
+        tag_values = normalise_string_list(tags)
+        category_values = normalise_string_list(categories)
+
+        combined: dict[Any, ResourceRecord] = {}
+
+        if query:
+            try:
+                semantic_results = self._semantic_search(
+                    query=query,
+                    tags=tag_values,
+                    categories=category_values,
+                    limit=limit,
+                )
+                for record in semantic_results:
+                    combined[record.id] = record
+                    if len(combined) >= limit:
+                        return list(combined.values())
+            except Exception as exc:  # pragma: no cover - defensive guard
+                logger.exception(
+                    "Semantic search failed for query '%s': %s", query, exc
+                )
+
+        keyword_results = self._keyword_search(
+            tags=tag_values,
+            categories=category_values,
+            query=query,
+            keywords=keywords,
+            limit=limit * 2,
+        )
+
+        for record in keyword_results:
+            if record.id not in combined:
+                combined[record.id] = record
+            if len(combined) >= limit:
+                break
+
+        return list(combined.values())
+
+    def _keyword_search(
+        self,
+        *,
+        tags: List[str],
+        categories: List[str],
+        query: Optional[str],
+        keywords: Optional[Iterable[str]],
+        limit: int,
+    ) -> List[ResourceRecord]:
         builder = self._client.table(self._table).select("*")
 
-        tag_values = normalise_string_list(tags)
-        if tag_values:
-            builder = builder.ilike("tags", f"%{tag_values[0]}%")
+        if tags:
+            builder = builder.ilike("tags", f"%{tags[0]}%")
 
-        category_values = normalise_string_list(categories)
-        if category_values:
-            builder = builder.ilike("categories", f"%{category_values[0]}%")
+        if categories:
+            builder = builder.ilike("categories", f"%{categories[0]}%")
 
-        keyword_list = [kw.strip() for kw in keywords or [] if kw and kw.strip()]
+        base_keywords = [kw.strip() for kw in keywords or [] if kw and kw.strip()]
+        expanded_keywords = _expand_keywords(base_keywords, query)
 
-        if not keyword_list and query:
-            keyword_list = [query]
-
-        if keyword_list:
+        if expanded_keywords:
             clauses = []
-            for kw in keyword_list:
+            for kw in expanded_keywords:
                 pattern = f"%{kw}%"
                 clauses.append(f"title.ilike.{pattern}")
                 clauses.append(f"notes.ilike.{pattern}")
+                clauses.append(f"url.ilike.{pattern}")
+                clauses.append(f"tags.ilike.{pattern}")
+                clauses.append(f"categories.ilike.{pattern}")
             builder = builder.or_(",".join(clauses))
 
         response = builder.limit(limit).order("created_at", desc=True).execute()
+        rows_json = cast(List[Any], response.data or [])
+
+        records: List[ResourceRecord] = []
+        for row in rows_json:
+            if isinstance(row, dict):
+                records.append(row_to_record(cast(dict[str, Any], row)))
+
+        return records
+
+    def _semantic_search(
+        self,
+        *,
+        query: str,
+        tags: List[str],
+        categories: List[str],
+        limit: int,
+    ) -> List[ResourceRecord]:
+        embedding = _generate_embedding(query)
+        if embedding is None:
+            return []
+
+        params: dict[str, Any] = {
+            "query_embedding": embedding,
+            "match_count": limit,
+            "match_threshold": settings.embedding_match_threshold,
+        }
+        if tags:
+            params["filter_tags"] = tags
+        if categories:
+            params["filter_categories"] = categories
+
+        response = self._client.rpc("match_resources", params).execute()
         rows_json = cast(List[Any], response.data or [])
 
         records: List[ResourceRecord] = []

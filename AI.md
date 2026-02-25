@@ -54,7 +54,22 @@ Project-based learning notes for building a Supabase-backed resource librarian a
 
 ---
 
-## 5. Next Learning Targets
+## 5. Semantic Search Upgrade
+**Goal:** Move beyond keyword `ilike` queries so retrieval understands context, not just literal matches.
+
+### What Changed
+- Added an `embeddings_vector` pgvector column and a `match_resources` Postgres function to Supabase so the database supports similarity search.
+- Introduced `src/core/embeddings.py` to abstract embedding providers (OpenAI by default, Ollama optional) and plugged it into `SupabaseResourceClient` so inserts/updates automatically generate vectors.
+- Updated the fetch path to blend semantic matches with the existing keyword fallback and respect tag/category filters.
+- Documented setup steps (SQL function, backfill script, env vars) plus a batch backfill utility to populate historical rows.
+- Added regression tests for the embedding helper utilities to guard against dimension mismatch and provider failures.
+- Hardened the Supabase RPC by returning `%TYPE` columns and documenting a `drop function if exists` step so deployments can replace earlier signatures cleanly.
+- Improved keyword fallback by normalising plural forms, searching URLs/tags/categories, and adding simple hyphen/space variants so queries like "ycombinator" and "startups" surface the expected saves even without embeddings.
+- Raised the default semantic match threshold to `1.0` (no filtering) so vector search always returns the closest rows even when cosine distances are high; users can dial it down via config if they want stricter matches.
+
+**Lesson:** Keeping Supabase as the single source of truth—storing both structured fields and vectors—simplifies operations while still unlocking contextual search. Clear fallbacks are essential so the agent stays useful even when embedding generation fails.
+
+## 6. Next Learning Targets
 - Persist conversation state / tool outputs with LangGraph checkpointers stored in Supabase.
 - Add structured output validation (Pydantic) for the classifier to tighten robustness.
 - Implement richer retrieval responses (LLM summarisation + grouping by tag/category).

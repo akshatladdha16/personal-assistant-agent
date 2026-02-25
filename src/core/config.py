@@ -49,6 +49,42 @@ class Settings(BaseSettings):
         description="Table used to store resource rows",
     )
 
+    # --- WhatsApp Transport ---
+    wppconnect_base_url: str = Field(
+        default="http://localhost:21465",
+        description="Base URL for the WPPConnect server",
+    )
+    wppconnect_session: Optional[str] = Field(
+        default=None,
+        description="Name of the WPPConnect session to control",
+    )
+    wppconnect_token: Optional[SecretStr] = Field(
+        default=None,
+        description="Bearer token used to call the WPPConnect REST API",
+    )
+    wppconnect_webhook_secret: Optional[SecretStr] = Field(
+        default=None,
+        description="Optional shared secret expected in webhook requests",
+    )
+
+    # --- Embeddings ---
+    embedding_provider: Literal["openai", "ollama", "none"] = Field(
+        default="openai",
+        description="Embedding backend used for semantic search",
+    )
+    embedding_model: str = Field(
+        default="text-embedding-3-small",
+        description="Embedding model identifier",
+    )
+    embedding_dimensions: int = Field(
+        default=1536,
+        description="Expected dimensionality for stored embeddings",
+    )
+    embedding_match_threshold: float = Field(
+        default=1.0,
+        description="Cosine distance threshold for semantic matches (1.0 for no filtering)",
+    )
+
     def validate_llm_config(self):
         """Custom validation to ensure keys exist for chosen provider."""
         if self.llm_provider == "openai" and not self.openai_api_key:

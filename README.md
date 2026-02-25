@@ -53,7 +53,50 @@ An AI agent that captures every resource you share—links, notes, or mixed cont
    Example prompts:
    - `save https://arxiv.org/abs/1234 with tags ai, research`
    - `store “LangGraph lesson notes” under agent architectures`
-   - `find resources about prompt engineering tagged ai`
+- `find resources about prompt engineering tagged ai`
+
+## Semantic Search with pgvector
+- Enable the `pgvector` extension in Supabase and add an `embeddings_vector vector(1536)` column to the `resources` table.
+- Apply the SQL in `supabase/match_resources.sql` (reproduced below) to register the RPC the agent calls (note the `drop function` to replace older versions safely):
+  ```sql
+  drop function if exists match_resources(vector, integer, double precision, text[], text[]);
+
+  create function match_resources(
+      query_embedding vector(1536),
+      match_count integer default 10,
+      match_threshold double precision default 1.0,
+      filter_tags text[] default null,
+      filter_categories text[] default null
+  )
+  returns table (
+      id resources.id%TYPE,
+      title resources.title%TYPE,
+      url resources.url%TYPE,
+      notes resources.notes%TYPE,
+      tags resources.tags%TYPE,
+      categories resources.categories%TYPE,
+      created_at resources.created_at%TYPE
+  )
+  language plpgsql as $$
+  begin
+    return query
+    select r.id, r.title, r.url, r.notes, r.tags, r.categories, r.created_at
+    from resources r
+    where r.embeddings_vector is not null
+      and (filter_tags is null or r.tags = any(filter_tags))
+      and (filter_categories is null or r.categories = any(filter_categories))
+      and (r.embeddings_vector <=> query_embedding) <= match_threshold
+    order by r.embeddings_vector <=> query_embedding
+    limit match_count;
+  end;
+  $$;
+  ```
+- The default `match_threshold` of `1.0` effectively keeps the top matches without filtering; lower it (e.g., `0.4`) if you want to discard weaker similarities.
+- Set `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, and `OPENAI_API_KEY` (or Ollama equivalents) in `.env`. The agent automatically generates embeddings on insert/update and falls back to keyword search if embedding fails.
+- Backfill existing rows once after enabling embeddings:
+  ```bash
+  uv run python scripts/backfill_embeddings.py --batch-size 50
+  ```
 
 ## Roadmap
 - Conversation memory via LangGraph checkpointers (mirroring into Supabase)
