@@ -1,0 +1,19 @@
+{
+  "secretKey": "THISISMYSECURETOKEN",
+  "host": "http://localhost",
+  "port": "21465",
+  "deviceName": "ResourceLibrarian",
+  "tokenStoreType": "file",
+  "startAllSession": true,
+  "webhook": {
+    "url": "http://localhost:8080/webhooks/wppconnect",
+    "autoDownload": true,
+    "readMessage": true,
+    "listenAcks": true,
+    "allUnreadOnStart": false,
+    "onPresenceChanged": false,
+    "onParticipantsChanged": false,
+    "onSelfMessage": false,
+    "ignore": ["status@broadcast"]
+  }
+}
