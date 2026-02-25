@@ -6,7 +6,8 @@
 
 ## Architecture Decisions
 - **Model factory (`src/core/llm.py`)**: One entry point for switching between local Ollama and cloud OpenAI models. Keeps the graph/tool nodes unaware of vendor details and enables caching.
-- **Supabase toolkit (`src/tools/supabase_client.py`)**: Encapsulates inserts/queries and maps rows to a `ResourceRecord` dataclass. Keeps API specifics out of graph nodes.
+- **Embedding service (`src/core/embeddings.py`)**: Wraps embedding providers (OpenAI, Ollama, or disabled) behind a cached helper so persistence code can request vectors without vendor coupling.
+- **Supabase toolkit (`src/tools/supabase_client.py`)**: Encapsulates inserts/queries, now handles embedding generation + storage (`embeddings_vector`) and blends semantic search (via `match_resources` RPC) with an expanded keyword fallback (singular/plural variants, URL/tag/category matches). Keeps API specifics out of graph nodes.
 - **Graph flow (`src/agent/graph.py`)**:
   1. *Classify*: LLM-only node that emits structured JSON (intent, payload).
   2. *Act*: Store or fetch nodes call the Supabase toolkit and craft human-readable feedback.
@@ -15,5 +16,5 @@
 
 ## Operational Notes
 - Run the agent with `uv run python -m src.main` so package imports resolve (now that `src/__init__.py` exists).
-- `.env` requires Supabase credentials (`SUPABASE_URL`, `SUPABASE_KEY`); LLM provider remains configurable per environment.
-- Supabase table schema stores `tags` and `categories` as simple `text` columns; the agent currently supports one tag/category per resource and uses `ilike` filters for retrieval.
+- `.env` requires Supabase credentials (`SUPABASE_URL`, `SUPABASE_KEY`) plus embedding config (`EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, etc.) when semantic search is enabled.
+- Supabase schema now includes an `embeddings_vector vector(1536)` column and a `match_resources` RPC (see `supabase/match_resources.sql`, which uses `%TYPE` so the function matches your column types automatically and drops any previous definition before creating the new one). Tags and categories remain single-text fields; semantic + keyword filters (with plural handling) are combined in the client. Default `match_threshold` is `1.0` (no filtering) so we always get top-K results; tune via env if you need tighter matches.
