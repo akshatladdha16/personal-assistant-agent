@@ -60,5 +60,26 @@ An AI agent that captures every resource you share—links, notes, or mixed cont
 - Automatic summaries for retrieved bundles
 - Additional ingestion channels (email, RSS, read-it-later inboxes)
 
+## WhatsApp Bridge (Local Prototype)
+1. **Configure environment**
+   - Copy `.env.example` to `.env` and add `WPPCONNECT_SESSION`, `WPPCONNECT_TOKEN`, and (optionally) `WPPCONNECT_WEBHOOK_SECRET` after generating a token from the WPPConnect server.
+2. **Start WPPConnect locally**
+   - Copy `wppconnect.config.example.json` to `wppconnect.config.json`, update the webhook URL if needed, and run:
+     ```bash
+     npx @wppconnect/server@latest --config ./wppconnect.config.json
+     ```
+   - Scan the QR code in the terminal with the WhatsApp account that should act as the agent.
+3. **Run the FastAPI bridge**
+   ```bash
+   uv run python -m src.whatsapp_server
+   ```
+   The server listens on `0.0.0.0:8080` by default and forwards incoming WhatsApp messages into the LangGraph agent.
+4. **(Optional) Expose the bridge**
+   - When you need WhatsApp webhooks to reach your machine from outside your network, open a tunnel such as:
+     ```bash
+     npx localtunnel --port 8080 --subdomain resource-librarian
+     ```
+   - Update `webhook.url` in `wppconnect.config.json` to the tunnel URL.
+
 ## Learn Alongside The Project
 Development decisions and lessons learned are logged in `AI.md`. Each milestone explains the “why” behind the implementation to reinforce deliberate, project-based learning.
