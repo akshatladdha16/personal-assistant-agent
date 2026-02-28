@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
-from typing import Any, Iterable, List, Optional, cast
+from typing import Any, Iterable, List, Optional, Tuple, cast
 
 from supabase import Client, create_client
+
+try:  # Optional dependency provided by supabase-py
+    from postgrest.exceptions import APIError
+except ImportError:  # pragma: no cover - defensive fallback
+    APIError = None  # type: ignore[assignment]
 
 from src.core.config import settings
 from src.core.embeddings import embed_text
@@ -49,6 +55,41 @@ def _generate_embedding(text: str) -> Optional[List[float]]:
         return None
 
     return vector
+
+
+def _summarise_semantic_error(error: Exception) -> str:
+    reason = _extract_error_message(error)
+    reason_lower = reason.lower()
+
+    if "ssl handshake" in reason_lower or "code 525" in reason_lower:
+        return (
+            "Semantic search is temporarily unavailable because Supabase reported an "
+            "SSL handshake error. Showing keyword matches only."
+        )
+
+    if reason:
+        return f"Semantic search unavailable ({reason}). Showing keyword matches only."
+
+    return "Semantic search is unavailable right now. Showing keyword matches only."
+
+
+def _extract_error_message(error: Exception) -> str:
+    details: List[str] = []
+
+    if APIError is not None and isinstance(error, APIError):  # pragma: no cover - optional
+        for attr in ("message", "code", "hint"):
+            value = getattr(error, attr, None)
+            if value:
+                details.append(str(value))
+
+    raw = " - ".join(details) if details else str(error).strip()
+    if not raw:
+        raw = error.__class__.__name__
+
+    cleaned = re.sub(r"\s+", " ", raw)
+    if len(cleaned) > 200:
+        return cleaned[:199] + "…"
+    return cleaned
 
 
 def _expand_keywords(keywords: Iterable[str], query: Optional[str]) -> List[str]:
@@ -234,11 +275,12 @@ class SupabaseResourceClient:
         query: Optional[str] = None,
         keywords: Optional[Iterable[str]] = None,
         limit: int = 10,
-    ) -> List[ResourceRecord]:
+    ) -> Tuple[List[ResourceRecord], List[str]]:
         tag_values = normalise_string_list(tags)
         category_values = normalise_string_list(categories)
 
         combined: dict[Any, ResourceRecord] = {}
+        notices: List[str] = []
 
         if query:
             try:
@@ -251,11 +293,16 @@ class SupabaseResourceClient:
                 for record in semantic_results:
                     combined[record.id] = record
                     if len(combined) >= limit:
-                        return list(combined.values())
+                        return list(combined.values()), notices
             except Exception as exc:  # pragma: no cover - defensive guard
-                logger.exception(
-                    "Semantic search failed for query '%s': %s", query, exc
+                warning = _summarise_semantic_error(exc)
+                notices.append(warning)
+                logger.warning(
+                    "Semantic search failed for query '%s': %s",
+                    query,
+                    warning,
                 )
+                logger.debug("Semantic search stack trace", exc_info=True)
 
         keyword_results = self._keyword_search(
             tags=tag_values,
@@ -271,7 +318,7 @@ class SupabaseResourceClient:
             if len(combined) >= limit:
                 break
 
-        return list(combined.values())
+        return list(combined.values()), notices
 
     def _keyword_search(
         self,

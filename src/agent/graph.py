@@ -128,7 +128,7 @@ def fetch_resources(state: AgentState) -> Dict[str, Any]:
 
     try:
         supabase = SupabaseResourceClient()
-        records = supabase.fetch_resources(
+        fetch_output = supabase.fetch_resources(
             tags=tags or None,
             categories=categories or None,
             query=query,
@@ -147,6 +147,14 @@ def fetch_resources(state: AgentState) -> Dict[str, Any]:
             ]
         }
 
+    records: List[ResourceRecord]
+    notices: List[str]
+    if isinstance(fetch_output, tuple):
+        records, notices = fetch_output
+    else:  # Backwards compatibility in case of unexpected return types
+        records = fetch_output
+        notices = []
+
     message = _format_retrieval_response(
         records,
         tags=tags,
@@ -154,6 +162,10 @@ def fetch_resources(state: AgentState) -> Dict[str, Any]:
         query=query,
         keywords=keywords,
     )
+
+    if notices:
+        notice_block = "\n".join(f"⚠️ {note}" for note in notices)
+        message = f"{notice_block}\n\n{message}"
 
     return {
         "results": [_record_to_dict(record) for record in records],

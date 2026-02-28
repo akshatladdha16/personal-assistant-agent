@@ -88,5 +88,6 @@ def embed_text(text: str) -> Optional[List[float]]:
     try:
         return service.embed(text)
     except Exception as exc:  # pragma: no cover - defensive guard
-        logger.exception("Embedding generation failed: %s", exc)
+        logger.warning("Embedding generation failed: %s", exc)
+        logger.debug("Embedding generation stack trace", exc_info=True)
         return None
