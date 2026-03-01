@@ -49,3 +49,6 @@ build/
 # --- Logs ---
 *.log
 uv.lock
+
+# --- Runtime pairing state ---
+var/pairing/
