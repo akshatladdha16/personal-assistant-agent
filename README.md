@@ -67,6 +67,7 @@ Bring the same agent into Telegram for quick DM workflows.
    TELEGRAM_POLL_INTERVAL=0.5
    TELEGRAM_PAIRING_CODE_TTL_SECONDS=3600
    TELEGRAM_PAIRING_PENDING_LIMIT=3
+   TELEGRAM_PAIRING_STORAGE_DIR=var/pairing
    ```
 3. **Run the bot**
    ```bash
@@ -75,6 +76,7 @@ Bring the same agent into Telegram for quick DM workflows.
 4. **DM pairing policy (inspired by OpenClaw)**
    - Unknown senders receive an 8-character pairing code (expires after 1 hour) and their message is paused until approved.
    - The bot caps pending requests at 3; additional requests are ignored until one expires or is approved.
+   - Pairing state (pending codes + allowlist) lives under `TELEGRAM_PAIRING_STORAGE_DIR` (default `var/pairing/`, ignored via `.gitignore`). Point this somewhere persistent if you run the bot on a server.
    - Admin commands (available to the configured admin ID):
      - `/pairing list` — view pending codes
      - `/pairing approve <CODE>` — allow the user and notify them
