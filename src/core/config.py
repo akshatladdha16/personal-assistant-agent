@@ -1,6 +1,7 @@
+from pathlib import Path
 from typing import Literal, Optional
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -85,6 +86,32 @@ class Settings(BaseSettings):
         description="Cosine distance threshold for semantic matches (1.0 for no filtering)",
     )
 
+    # --- Telegram Transport ---
+    telegram_bot_token: Optional[SecretStr] = Field(
+        default=None,
+        description="BotFather token that enables the Telegram transport",
+    )
+    telegram_admin_id: Optional[int] = Field(
+        default=None,
+        description="Telegram user ID allowed to approve pairing requests",
+    )
+    telegram_poll_interval: float = Field(
+        default=0.5,
+        description="Delay (seconds) between long-poll requests when using polling",
+    )
+    telegram_pairing_code_ttl_seconds: int = Field(
+        default=3600,
+        description="How long (seconds) a pairing code remains valid",
+    )
+    telegram_pairing_pending_limit: int = Field(
+        default=3,
+        description="Maximum simultaneous pending pairing requests",
+    )
+    telegram_pairing_storage_dir: str = Field(
+        default=str(Path("var/pairing")),
+        description="Directory where pairing state JSON files are written",
+    )
+
     def validate_llm_config(self):
         """Custom validation to ensure keys exist for chosen provider."""
         if self.llm_provider == "openai" and not self.openai_api_key:
@@ -97,9 +124,18 @@ class Settings(BaseSettings):
         if not self.supabase_key:
             raise ValueError("SUPABASE_KEY is required for resource management.")
 
+    @field_validator("telegram_admin_id", mode="before")
+    @classmethod
+    def _parse_admin_id(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, str) and value.strip():
+            return int(value.strip())
+        return value
+
 
 # Create a global settings object
-settings = Settings()
+settings = Settings()  # type: ignore[call-arg]
 
 # Validate immediately upon import
 try:

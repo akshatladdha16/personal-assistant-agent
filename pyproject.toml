@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "aiogram>=3.6.0",
     "langchain-community>=0.4.1",
     "langchain-ollama>=1.0.1",
     "langchain-openai>=1.1.9",

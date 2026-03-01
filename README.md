@@ -53,7 +53,36 @@ An AI agent that captures every resource you share—links, notes, or mixed cont
    Example prompts:
    - `save https://arxiv.org/abs/1234 with tags ai, research`
    - `store “LangGraph lesson notes” under agent architectures`
-- `find resources about prompt engineering tagged ai`
+   - `find resources about prompt engineering tagged ai`
+
+## Telegram Bot Interface
+
+Bring the same agent into Telegram for quick DM workflows.
+
+1. **Create a bot** via [@BotFather](https://t.me/BotFather) and grab your Telegram user ID (use `@userinfobot`). This ID will be the sole admin allowed to approve new chatters.
+2. **Configure environment variables** (extend `.env`):
+   ```bash
+   TELEGRAM_BOT_TOKEN=123456:bot-token
+   TELEGRAM_ADMIN_ID=12345678
+   TELEGRAM_POLL_INTERVAL=0.5
+   TELEGRAM_PAIRING_CODE_TTL_SECONDS=3600
+   TELEGRAM_PAIRING_PENDING_LIMIT=3
+   TELEGRAM_PAIRING_STORAGE_DIR=var/pairing
+   ```
+3. **Run the bot**
+   ```bash
+   uv run python -m src.transport.telegram_bot
+   ```
+4. **DM pairing policy (inspired by OpenClaw)**
+   - Unknown senders receive an 8-character pairing code (expires after 1 hour) and their message is paused until approved.
+   - The bot caps pending requests at 3; additional requests are ignored until one expires or is approved.
+   - Pairing state (pending codes + allowlist) lives under `TELEGRAM_PAIRING_STORAGE_DIR` (default `var/pairing/`, ignored via `.gitignore`). Point this somewhere persistent if you run the bot on a server.
+   - Admin commands (available to the configured admin ID):
+     - `/pairing list` — view pending codes
+     - `/pairing approve <CODE>` — allow the user and notify them
+     - `/pairing reject <CODE>` — delete the request and notify the user
+     - `/pairing revoke <USER_ID>` — remove an approved user from the allowlist
+   - Once approved, users interact with the same LangGraph workflow backing the CLI.
 
 ## Semantic Search with pgvector
 - Enable the `pgvector` extension in Supabase and add an `embeddings_vector vector(1536)` column to the `resources` table.

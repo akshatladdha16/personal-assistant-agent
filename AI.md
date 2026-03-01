@@ -74,3 +74,17 @@ Project-based learning notes for building a Supabase-backed resource librarian a
 - Add structured output validation (Pydantic) for the classifier to tighten robustness.
 - Implement richer retrieval responses (LLM summarisation + grouping by tag/category).
 - Build ingestion tests with a mocked Supabase client to validate payload construction without network calls.
+
+---
+
+## 7. Telegram DM Interface
+**Goal:** Offer a mobile-friendly path to the agent while keeping access gated behind explicit approval.
+
+### Implementation Notes
+- Added `aiogram` as the async Telegram client and built `src/transport/telegram_bot.py`, which forwards DMs to the existing LangGraph workflow.
+- Introduced a pairing policy inspired by OpenClaw’s DM guardrails: unknown users receive an 8-character code, pending requests expire after 1 hour, and only the configured `TELEGRAM_ADMIN_ID` can approve/reject.
+- Created `src/pairing/store.py`, a JSON-backed store that tracks pending codes plus an allowlist. It enforces TTL, caps simultaneous requests, and exposes helpers for approval/revocation.
+- Expanded configuration (`src/core/config.py`, `.env.example`, README) with Telegram settings so deployments can opt in without affecting the CLI path.
+- The bot mirrors CLI outputs, including semantic-search warning notices, so messaging users see the same operational context as terminal users.
+
+**Lesson:** Decoupling the transport layer from agent logic keeps LangGraph unchanged and lets us add messaging channels incrementally. A lightweight local pairing store delivers the “owner approval” workflow without a separate database, while still mirroring OpenClaw’s security ergonomics.
